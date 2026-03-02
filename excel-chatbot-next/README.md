@@ -1,36 +1,52 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Excel Analytics Chatbot (Next.js + OpenAI Code Interpreter)
 
-## Getting Started
+A full-stack Next.js application that provides a modern, seamless conversational interface for analyzing large Excel datasets. Powered securely by the **OpenAI Responses API (Assistants v2)** and the **Code Interpreter** tool.
 
-First, run the development server:
+This architecture is specifically designed to perform perfect, mathematically accurate data aggregations and spreadsheet analysis by dynamically running Python Pandas code in an invisible cloud sandbox.
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+## 🚀 Key Features
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+- **Painless Dynamic Uploads**: Upload an Excel (`.xlsx`) or CSV file directly in the sleek React UI.
+- **Persistent Sessions**: Your API key, File IDs, Assistant IDs, and threading context are securely cached in your browser's `localStorage`. You can refresh the page without needing to re-upload an 11MB file!
+- **Zero Frontend API Leaks**: The sensitive OpenAI API key is intercepted and processed entirely on the secure Next.js App Router (`/api` layer). Your keys are never exposed in browser Network tabs.
+- **Streaming Responses**: Messages are streamed back to the UI in real-time.
+- **Premium UI/UX**: Dark mode by default, featuring glass-morphism panels, customized file uploaders, and typing indicators.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+---
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## 🏗️ Technical Architecture
 
-## Learn More
+This application employs the "correct minimal flow" for the OpenAI Assistants API:
 
-To learn more about Next.js, take a look at the following resources:
+1. **Upload (`/api/upload`)**: When an Excel file is selected, the server uploads it securely to OpenAI's Vector/Files storage. It generates an `assistantId` and `fileId`, instantly returning them to the React frontend to cache.
+2. **Conversation (`/api/chat`)**: When the user asks a question, the server binds the `fileId` **directly to the message payload** (rather than to the Assistant's global `tool_resources`). This forces the Code Interpreter to actively process the dataset on every query, preventing hallucinations or "missing file" bugs.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+### Tech Stack
+* **Frontend**: React 18, Next.js 14 App Router, Lucide Icons.
+* **Backend**: Node.js, `openai` Node SDK.
+* **AI engine**: GPT-4o-mini (Code Interpreter enabled).
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+---
 
-## Deploy on Vercel
+## 💻 Running it Locally
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+1. Clone this repository.
+2. Ensure you have Node.js 18+ installed.
+3. Install dependencies:
+   ```bash
+   npm install
+   ```
+4. Start the development server:
+   ```bash
+   npm run dev
+   ```
+5. Open [http://localhost:3000](http://localhost:3000) in your browser.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+### Usage Example
+1. You will be greeted by the **Setup Screen**.
+2. Input your **OpenAI API Key** (starting with `sk-`).
+3. Click to map your `.xlsx` Excel dataset.
+4. Click **Start Chatbot**. (Wait ~5 seconds for the cloud dataset initialization).
+5. Start asking questions! (e.g., *"What were the total Trade Sales Gallons for the Hardwood category?"*)
+
+> **Note:** If you want to analyze a completely different Excel file, simply click the red **Reset** button in the top right to clear your Local Storage state and start a fresh session!
