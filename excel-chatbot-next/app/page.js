@@ -1,45 +1,29 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Send, FileSpreadsheet, Loader2, Bot, User, KeyRound, UploadCloud } from 'lucide-react';
+import { Send, FileSpreadsheet, Loader2, Bot, User, KeyRound, Database } from 'lucide-react';
 
 export default function ChatApp() {
   const [apiKey, setApiKey] = useState('');
   const [isApiKeySet, setIsApiKeySet] = useState(false);
-  
-  // File upload state
-  const [file, setFile] = useState(null);
-  const [isUploading, setIsUploading] = useState(false);
-  
-  // Storage state
-  const [assistantId, setAssistantId] = useState(null);
-  const [threadId, setThreadId] = useState(null);
-  const [fileId, setFileId] = useState(null);
   
   const [messages, setMessages] = useState([]);
   const [inputText, setInputText] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const messagesEndRef = useRef(null);
 
-  // 1. Initial Load: Check local storage for API key and Assistant ID
+  // 1. Initial Load: Check local storage for API key 
   useEffect(() => {
     const savedKey = localStorage.getItem('openai_api_key');
-    const savedAssistant = localStorage.getItem('openai_assistant_id');
-    const savedThread = localStorage.getItem('openai_thread_id');
-    const savedFileId = localStorage.getItem('openai_file_id');
     
-    if (savedKey) setApiKey(savedKey);
-    // If they already fully logged in and uploaded a file previously:
-    if (savedKey && savedAssistant && savedThread && savedFileId) {
+    if (savedKey) {
+        setApiKey(savedKey);
         setIsApiKeySet(true);
-        setAssistantId(savedAssistant);
-        setThreadId(savedThread);
-        setFileId(savedFileId);
         setMessages([
           {
             id: Date.now(),
             sender: 'bot',
-            text: "Welcome back! I remembered your Excel file and session so you don't have to wait for an upload again. How can I help you today?"
+            text: "Welcome back! The analytics engine is ready. What data would you like to explore today?"
           }
         ]);
     }
@@ -50,87 +34,43 @@ export default function ChatApp() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isTyping]);
 
-  const handleFileChange = (e) => {
-      if (e.target.files && e.target.files[0]) {
-          setFile(e.target.files[0]);
-      }
-  };
-
   const handleStart = async (e) => {
     e.preventDefault();
     if (!apiKey.trim().startsWith('sk-')) {
         alert("Please enter a valid OpenAI API key starting with 'sk-'");
         return;
     }
-
-    if (!file && !assistantId) {
-        alert("Please select your dataset to upload!");
-        return;
-    }
     
     // Save to local storage
     localStorage.setItem('openai_api_key', apiKey.trim());
     setIsApiKeySet(true);
-    setIsUploading(true);
     
-    try {
-        // Prepare multipart/form-data
-        const formData = new FormData();
-        formData.append('apiKey', apiKey.trim());
-        if (file) formData.append('file', file);
-        if (assistantId) formData.append('assistantId', assistantId); // In case they are updating an existing assistant
-
-        const res = await fetch('/api/upload', {
-            method: 'POST',
-            body: formData, // Notice no 'Content-Type' header here, fetch handles it automatically
-        });
-        
-        const data = await res.json();
-        
-        if (data.error) throw new Error(data.error);
-        
-        // Cache Assistant and Thread!
-        setAssistantId(data.assistantId);
-        setThreadId(data.threadId);
-        setFileId(data.fileId);
-        localStorage.setItem('openai_assistant_id', data.assistantId);
-        localStorage.setItem('openai_thread_id', data.threadId);
-        if (data.fileId) localStorage.setItem('openai_file_id', data.fileId);
-        
-        setMessages([
-          {
-            id: Date.now(),
-            sender: 'bot',
-            text: "Welcome! Your dataset has been securely uploaded to OpenAI's Code Interpreter. You can now ask me any questions."
-          }
-        ]);
-    } catch (error) {
-        console.error("Setup Error:", error);
-        alert(`Setup failed: ${error.message}`);
-        setIsApiKeySet(false);
-    } finally {
-        setIsUploading(false);
-    }
+    setMessages([
+      {
+        id: Date.now(),
+        sender: 'bot',
+        text: "Authentication successful! I am ready to analyze the 170,000+ data points for you. You can ask me questions now."
+      }
+    ]);
   };
 
   // Reset Session
   const clearSession = () => {
       localStorage.removeItem('openai_api_key');
+      
+      // Cleanup deprecated keys if they exist
+      localStorage.removeItem('openai_file_id');
       localStorage.removeItem('openai_assistant_id');
       localStorage.removeItem('openai_thread_id');
-      localStorage.removeItem('openai_file_id');
+
       setIsApiKeySet(false);
-      setAssistantId(null);
-      setThreadId(null);
-      setFileId(null);
       setMessages([]);
-      setFile(null);
       setApiKey('');
   };
 
   const handleSend = async (e) => {
     e.preventDefault();
-    if (!inputText.trim() || !assistantId || !threadId) return;
+    if (!inputText.trim()) return;
 
     const userQuery = inputText.trim();
     const newUserMessage = { id: Date.now(), sender: 'user', text: userQuery };
@@ -140,14 +80,13 @@ export default function ChatApp() {
     setIsTyping(true);
 
     try {
-      const res = await fetch('/api/chat', {
+      const startTime = Date.now();
+      
+      const res = await fetch('/api/query', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
               apiKey: apiKey.trim(),
-              assistantId,
-              threadId,
-              fileId,
               message: userQuery
           })
       });
@@ -159,27 +98,27 @@ export default function ChatApp() {
       setMessages(prev => [...prev, {
         id: Date.now() + 1,
         sender: 'bot',
-        text: data.text
+        text: data.text || "I found some results but couldn't format them."
       }]);
     } catch (e) {
       setMessages(prev => [...prev, {
         id: Date.now() + 1,
         sender: 'bot',
-        text: `Error generating response: ${e.message}`
+        text: `I couldn't quite calculate that. Can you try rephrasing your question or being more specific?`
       }]);
     } finally {
       setIsTyping(false);
     }
   };
 
-  // 1. Render Setup/Upload Screen
+  // 1. Render Setup Screen
   if (!isApiKeySet) {
       return (
           <div className="setup-container">
             <div className="setup-card">
-              <KeyRound size={48} color="var(--primary)" style={{marginBottom: 16}} />
+              <Database size={48} color="var(--primary)" style={{marginBottom: 16}} />
               <h2>New Analytics Session</h2>
-              <p>Please provide your API key and map the dataset you want to analyze.</p>
+              <p>Please log in with your API limit key to authenticate the SQL Engine.</p>
               
               <form onSubmit={handleStart} style={{display: 'flex', flexDirection: 'column', gap: '16px'}}>
                   <input 
@@ -190,17 +129,15 @@ export default function ChatApp() {
                       onChange={(e) => setApiKey(e.target.value)}
                   />
 
-                  <div className="file-upload-box">
+                  <div className="file-upload-box" style={{opacity: 0.5, pointerEvents: 'none', background: '#111', border: 'none'}}>
                       <label htmlFor="file-upload" className="custom-file-upload">
-                          <UploadCloud size={24} style={{marginBottom: 8}}/>
                           <br />
-                          {file ? <b style={{color: 'var(--primary)'}}>{file.name}</b> : <span>Click to Upload Excel File</span>}
+                          <b style={{color: 'var(--primary)'}}>sales.db (170,528 rows attached via better-sqlite3)</b>
                       </label>
-                      <input id="file-upload" type="file" accept=".xlsx,.csv" onChange={handleFileChange} style={{display: 'none'}} />
                   </div>
 
-                  <button type="submit" className="btn-primary" disabled={!apiKey.trim() || (!file && !assistantId) || isUploading}>
-                      {isUploading ? "Uploading Data (Do Not Close)..." : "Start Chatbot"}
+                  <button type="submit" className="btn-primary" disabled={!apiKey.trim()}>
+                      Authenticate
                   </button>
               </form>
             </div>
@@ -214,20 +151,14 @@ export default function ChatApp() {
       {/* Header */}
       <header className="app-header">
         <div className="header-logo">
-          <FileSpreadsheet className="logo-icon" size={28} />
+          <Database className="logo-icon" size={28} />
           <div className="header-text">
-            <h1>Excel Bot (OpenAI)</h1>
-            <span className="subtitle">Secure Full-Stack Next.js App</span>
+            <h1>Sadhana Bot</h1>
+            <span className="subtitle">Get instant responses</span>
           </div>
         </div>
         <div style={{display: 'flex', gap: 12, alignItems: 'center'}}>
-            {isUploading && (
-                <div className="loading-badge">
-                <Loader2 className="spinner" size={16} />
-                <span>Uploading Dataset...</span>
-                </div>
-            )}
-            <button onClick={clearSession} style={{background: 'rgba(255,0,0,0.1)', color: '#ef4444', border: '1px solid #ef4444', padding: '6px 12px', borderRadius: 6, cursor: 'pointer', fontSize: 13}}>Reset</button>
+            <button onClick={clearSession} style={{background: 'rgba(255,0,0,0.1)', color: '#ef4444', border: '1px solid #ef4444', padding: '6px 12px', borderRadius: 6, cursor: 'pointer', fontSize: 13}}>Logout</button>
         </div>
       </header>
 
@@ -252,6 +183,7 @@ export default function ChatApp() {
                 <span className="dot"></span>
                 <span className="dot"></span>
                 <span className="dot"></span>
+                <span style={{color: 'grey', marginLeft: 16, fontSize: 12}}>Thinking...</span>
               </div>
             </div>
           )}
@@ -266,13 +198,13 @@ export default function ChatApp() {
             type="text"
             value={inputText}
             onChange={(e) => setInputText(e.target.value)}
-            placeholder={isUploading ? "Please wait for dataset upload..." : "Ask about sales in Florida in 2024..."}
-            disabled={isUploading || isTyping}
+            placeholder={"Prompt the SQLite Database (e.g. Sales generated in Florida)..."}
+            disabled={isTyping}
             className="chat-input"
           />
           <button 
             type="submit" 
-            disabled={!inputText.trim() || isUploading || isTyping}
+            disabled={!inputText.trim() || isTyping}
             className="send-button"
           >
             <Send size={20} />
