@@ -47,6 +47,7 @@ ${message}
 
     // Remove any markdown block characters if the LLM hallucinated them
     const sql = response?.output_text?.replace(/```sql/g, '').replace(/```/g, '').trim();
+    console.log('\n🔵 [1] GPT Generated SQL:\n', sql);
 
     if (!sql) {
         throw new Error("OpenAI failed to generate a valid SQL prompt.");
@@ -56,6 +57,7 @@ ${message}
     let result;
     try {
         result = db.prepare(sql).all();
+        console.log(`\n🟡 [2] SQL Result: ${result.length} row(s)`, result.slice(0, 5));
     } catch (dbError) {
         console.warn("SQL Execution failed:", dbError.message);
         return NextResponse.json({
@@ -64,53 +66,38 @@ ${message}
         });
     }
 
-    // 3️⃣ Construct a friendly answer
+    // 3️⃣ Send data + original question to OpenAI for natural language interpretation
     let answerText = "";
     if (result && result.length > 0) {
-        const firstRow = result[0];
-        const keys = Object.keys(firstRow);
-        
-        // If it's a simple scalar result (like SELECT SUM(...))
-        if (result.length === 1 && keys.length === 1) {
-            const val = firstRow[keys[0]];
-            if (val === null || val === undefined) {
-                answerText = "I couldn't find any matching data for that query. Please double-check the filters and try again.";
-            } else {
-                const formattedVal = typeof val === 'number' ? new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 }).format(val) : val;
-                answerText = `The result is **${formattedVal}**.`;
-            }
-        } else if (result.length === 1) {
-             // For GROUP BY queries that return a single top result (e.g. highest sector)
-             const key = keys.find(k => k !== 'total_sales' && k !== 'count' && !k.includes('(')) || keys[0];
-             const valKey = keys.find(k => k !== key);
-             
-             let description = firstRow[key];
-             if (valKey) {
-                 const val = firstRow[valKey];
-                 const formattedVal = typeof val === 'number' ? new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 }).format(val) : val;
-                 description += ` (**${formattedVal}**)`;
-             }
-             answerText = `The top result is **${description}**.`;
-        } else {
-             // Multi-row result — format as a clean numbered list
-             const fmt = (v) => typeof v === 'number'
-                 ? new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 }).format(v)
-                 : (v ?? '—');
+        // Summarise the data for the prompt (cap at 50 rows to stay within token limits)
+        const summaryRows = result.slice(0, 50);
+        const dataJson = JSON.stringify(summaryRows, null, 2);
+        const totalRows = result.length;
+        const truncationNote = totalRows > 50 
+            ? `\n(Note: Only the first 50 of ${totalRows} rows are shown above.)` 
+            : '';
 
-             const maxDisplay = 200;
-             const display = result.slice(0, maxDisplay);
-             const keys = Object.keys(result[0]);
-             
-             const rows = display.map((row, i) => {
-                 const parts = keys.map(k => `**${k}**: ${fmt(row[k])}`).join('  |  ');
-                 return `${i + 1}. ${parts}`;
-             }).join('\n');
+        const interpretResponse = await openai.responses.create({
+            model: "gpt-4o-mini",
+            input: `You are a sharp, concise data analyst. A user asked a question and you retrieved data to answer it.
 
-             const suffix = result.length > maxDisplay ? `\n\n_Showing first ${maxDisplay} of ${result.length} results. Refine your query to narrow down further._` : '';
-             answerText = `**${result.length} result(s) found:**\n\n${rows}${suffix}`;
-        }
+User question: "${message}"
+Data: ${dataJson}${truncationNote}
+
+Instructions:
+- Answer in 1–3 sentences maximum. Be direct — lead with the key answer.
+- Use **bold** for standout numbers, names, and comparisons.
+- If comparing values, include the percentage difference.
+- Highlight anything surprising or noteworthy in a single, punchy sentence.
+- Never mention SQL, databases, or technical details. Just give the insight.`
+        });
+
+        answerText = interpretResponse?.output_text?.trim() || 
+            "I retrieved the data but couldn't generate an interpretation. Please try rephrasing.";
+        console.log('\n🟢 [3] AI Interpretation:\n', answerText);
+
     } else {
-        answerText = "I looked through the data but couldn't find any results matching your request.";
+        answerText = "I looked through the data but couldn't find any matching records. Please double-check the filters or try rephrasing your question.";
     }
 
     // 4️⃣ Detect chart requests and build chart data
