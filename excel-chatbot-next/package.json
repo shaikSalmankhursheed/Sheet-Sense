@@ -10,10 +10,13 @@
   },
   "dependencies": {
     "ai": "^6.0.106",
+    "better-sqlite3": "^12.6.2",
+    "chart.js": "^4.5.1",
     "lucide-react": "^0.576.0",
     "next": "16.1.6",
     "openai": "^6.25.0",
     "react": "19.2.3",
+    "react-chartjs-2": "^5.3.1",
     "react-dom": "19.2.3",
     "xlsx": "^0.18.5"
   },
